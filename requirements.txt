@@ -1,0 +1,6 @@
+mediapipe
+opencv-python
+numpy
+flask
+ollama
+python 3.11 # required for mediapipe

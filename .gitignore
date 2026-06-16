@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+*.db
+swings/
+.env
+venv/
+pose_landmarker.task
