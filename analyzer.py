@@ -4,6 +4,7 @@ from mediapipe.tasks.python import vision, BaseOptions
 from mediapipe.tasks.python.vision import PoseLandmarker, PoseLandmarkerOptions, RunningMode
 import urllib.request
 import os
+from detection import SwingDetector
 
 from posture import spine_angle, arm_hang_angle, knee_flex
 
@@ -28,6 +29,8 @@ options = PoseLandmarkerOptions(
 
 cap = cv2.VideoCapture(0)
 print("Starting Camera — press Q to quit")
+
+detector = SwingDetector()
 
 with PoseLandmarker.create_from_options(options) as landmarker:
     frame_num = 0
@@ -62,6 +65,28 @@ with PoseLandmarker.create_from_options(options) as landmarker:
             spine_color = (0, 255, 0) if 5 <= spine <= 25 else (0, 0, 255)
             arms_color = (0, 255, 0) if 82 <= arms <= 90 else (0, 0, 255)
             legs_color = (0, 255, 0) if 145 <= knees <= 165 else (0, 0, 255)
+
+            all_green = ( 5 <= spine <= 25, 82 <= arms <= 90 , 145 <= knees <= 165)
+
+            event = detector.update(landmarks, all_green)
+
+
+            state_text = detector.state 
+
+            state_colors = {"IDLE": (255, 255, 255), "ARMED": (0, 255, 0),"SWINGING": (0, 255, 0),"COOLDOWN": (0, 0, 255)}
+            color = state_colors.get(state_text , (255,255,255))
+
+            cv2.putText(frame, f"State: {state_text}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 2)
+
+
+            if event == "armed":
+                print(" ARMED")
+            elif event == "swing_started":
+                print("🏌️ SWING DETECTED")
+            elif event == "disarmed":
+                print(" Disarmed")
+            if event == "armed":
+                print("armed")
 
             for start, end in SPINE_LINES:
                 x1, y1 = int(landmarks[start].x * w), int(landmarks[start].y * h)
