@@ -9,10 +9,10 @@ class SwingDetector:
         self.armed_wrist_y = 0
 
 
-        self.frames_needed_to_arm = 60
+        self.frames_needed_to_arm = 120
         self.wrist_move_threshold = .04
-        self.swing_duration_frames = 90
-        self.cooldown_duration = 60
+        self.swing_duration_frames = 60
+        self.cooldown_duration = 90
 
 
     def update(self, landmarks, all_green):
