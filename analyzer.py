@@ -6,7 +6,9 @@ import urllib.request
 import os
 from detection import SwingDetector
 
+
 from posture import spine_angle, arm_hang_angle, knee_flex
+from buffer import FrameBuffer
 
 MODEL_PATH = "pose_landmarker.task"
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
@@ -31,6 +33,7 @@ cap = cv2.VideoCapture(0)
 print("Starting Camera — press Q to quit")
 
 detector = SwingDetector()
+buffer = FrameBuffer(max_frames=120) 
 
 with PoseLandmarker.create_from_options(options) as landmarker:
     frame_num = 0
@@ -112,6 +115,8 @@ with PoseLandmarker.create_from_options(options) as landmarker:
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, arms_color, 2)
             cv2.putText(frame, f"Knees: {knees:.0f}", (480, h - 15),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.8, legs_color, 2)
+            
+        buffer.add(frame)
             
         cv2.imshow("Swing AI", frame)
 
