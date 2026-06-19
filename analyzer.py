@@ -4,11 +4,12 @@ from mediapipe.tasks.python import vision, BaseOptions
 from mediapipe.tasks.python.vision import PoseLandmarker, PoseLandmarkerOptions, RunningMode
 import urllib.request
 import os
+
+
 from detection import SwingDetector
-
-
 from posture import spine_angle, arm_hang_angle, knee_flex
 from buffer import FrameBuffer
+from recording import save_swing
 
 MODEL_PATH = "pose_landmarker.task"
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
@@ -34,6 +35,10 @@ print("Starting Camera — press Q to quit")
 
 detector = SwingDetector()
 buffer = FrameBuffer(max_frames=120) 
+
+swing_in_progress = False
+post_swing_frames = []
+POST_SWING_LENGTH = 120
 
 with PoseLandmarker.create_from_options(options) as landmarker:
     frame_num = 0
@@ -69,9 +74,25 @@ with PoseLandmarker.create_from_options(options) as landmarker:
             arms_color = (0, 255, 0) if 82 <= arms <= 90 else (0, 0, 255)
             legs_color = (0, 255, 0) if 145 <= knees <= 165 else (0, 0, 255)
 
-            all_green = ( 5 <= spine <= 25, 82 <= arms <= 90 , 145 <= knees <= 165)
+            all_green =  5 <= spine <= 25 and 82 <= arms <= 90 and 145 <= knees <= 165
 
             event = detector.update(landmarks, all_green)
+            if event == "swing_started":
+                swing_in_progress = True 
+                post_swing_frames = []
+            if swing_in_progress:
+                post_swing_frames.append(frame.copy())
+
+                if len(post_swing_frames) >= POST_SWING_LENGTH:
+                    all_frames = buffer.get_all() + post_swing_frames
+                    filename = save_swing(all_frames, fps=60)
+                    print(f"Saved: {filename}")
+
+                    swing_in_progress = False
+                    post_swing_frames = []
+                    buffer.clear()
+
+            
 
 
             state_text = detector.state 
@@ -88,8 +109,6 @@ with PoseLandmarker.create_from_options(options) as landmarker:
                 print("🏌️ SWING DETECTED")
             elif event == "disarmed":
                 print(" Disarmed")
-            if event == "armed":
-                print("armed")
 
             for start, end in SPINE_LINES:
                 x1, y1 = int(landmarks[start].x * w), int(landmarks[start].y * h)
