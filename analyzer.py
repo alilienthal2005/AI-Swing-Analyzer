@@ -9,6 +9,7 @@ import os
 from detection import SwingDetector
 from posture import spine_angle, arm_hang_angle, knee_flex
 from buffer import FrameBuffer
+from buffer import LandmarkBuffer
 from recording import save_swing
 
 MODEL_PATH = "pose_landmarker.task"
@@ -31,13 +32,18 @@ options = PoseLandmarkerOptions(
 )
 
 cap = cv2.VideoCapture(0)
+fps = cap.get(cv2.CAP_PROP_FPS)
+if not fps or fps <= 1:
+    fps = 30
 print("Starting Camera — press Q to quit")
 
 detector = SwingDetector()
 buffer = FrameBuffer(max_frames=120) 
+landmark_buffer = LandmarkBuffer(max_frames=120)
 
 swing_in_progress = False
 post_swing_frames = []
+post_swing_landmarks = []
 POST_SWING_LENGTH = 120
 
 with PoseLandmarker.create_from_options(options) as landmarker:
@@ -50,7 +56,7 @@ with PoseLandmarker.create_from_options(options) as landmarker:
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
 
-        timestamp_ms = int((frame_num / 30) * 1000)
+        timestamp_ms = int((frame_num / fps) * 1000)
         frame_num += 1
 
         result = landmarker.detect_for_video(mp_image, timestamp_ms)
@@ -58,6 +64,7 @@ with PoseLandmarker.create_from_options(options) as landmarker:
         if result.pose_landmarks:
             h, w = frame.shape[:2]
             landmarks = result.pose_landmarks[0]
+            landmark_buffer.add(landmarks)
 
             for lm in landmarks:
                 x, y = int(lm.x * w), int(lm.y * h)
@@ -78,19 +85,26 @@ with PoseLandmarker.create_from_options(options) as landmarker:
 
             event = detector.update(landmarks, all_green)
             if event == "swing_started":
-                swing_in_progress = True 
+                swing_in_progress = True
                 post_swing_frames = []
+                post_swing_landmarks = []
             if swing_in_progress:
                 post_swing_frames.append(frame.copy())
+                post_swing_landmarks.append(landmarks)
 
                 if len(post_swing_frames) >= POST_SWING_LENGTH:
                     all_frames = buffer.get_all() + post_swing_frames
-                    filename = save_swing(all_frames, fps=60)
+                    all_landmarks = landmark_buffer.get_all() + post_swing_landmarks
+
+                    filename = save_swing(all_frames, fps=fps)
                     print(f"Saved: {filename}")
+                    print(f"Captured {len(all_landmarks)} landmark frames for metrics")
 
                     swing_in_progress = False
                     post_swing_frames = []
+                    post_swing_landmarks = []
                     buffer.clear()
+                    landmark_buffer.clear()
 
             
 

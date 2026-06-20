@@ -9,7 +9,7 @@ class SwingDetector:
         self.armed_wrist_y = 0
 
 
-        self.frames_needed_to_arm = 120
+        self.frames_needed_to_arm = 60
         self.wrist_move_threshold = .04
         self.swing_duration_frames = 60
         self.cooldown_duration = 90
@@ -40,7 +40,7 @@ class SwingDetector:
             if wrist_movement > self.wrist_move_threshold:
                 self.state = "SWINGING"
                 self.swing_hold_frames = 0 
-                return "swing started"
+                return "swing_started"
             return "armed "
         
         elif self.state == "SWINGING":
