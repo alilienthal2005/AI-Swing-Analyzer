@@ -9,6 +9,7 @@ from detection import SwingDetector
 from posture import spine_angle, arm_hang_angle, knee_flex
 from buffer import FrameBuffer, LandmarkBuffer
 from recording import save_swing
+from body_metrics import tempo_ratio, head_movement, top_hand_height, spine_angle_maintenance
 
 MODEL_PATH = "pose_landmarker.task"
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
@@ -26,6 +27,10 @@ LEG_LINES = [(23, 25), (25, 27), (24, 26), (26, 28), (27, 29), (29, 31), (28, 30
 VISIBILITY_THRESHOLD = 0.6
 PRE_SWING_LENGTH = 60
 POST_SWING_LENGTH = 90
+
+SPINE_MIN, SPINE_MAX = 5, 25
+ARMS_MIN, ARMS_MAX = 82, 90
+KNEES_MIN, KNEES_MAX = 135, 165
 
 options = PoseLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=MODEL_PATH),
@@ -76,11 +81,15 @@ with PoseLandmarker.create_from_options(options) as landmarker:
             arms = arm_hang_angle(landmarks)
             knees = knee_flex(landmarks)
 
-            spine_color = (0, 255, 0) if 5 <= spine <= 25 else (0, 0, 255)
-            arms_color = (0, 255, 0) if 82 <= arms <= 90 else (0, 0, 255)
-            legs_color = (0, 255, 0) if 145 <= knees <= 165 else (0, 0, 255)
+            spine_color = (0, 255, 0) if SPINE_MIN <= spine <= SPINE_MAX else (0, 0, 255)
+            arms_color = (0, 255, 0) if ARMS_MIN <= arms <= ARMS_MAX else (0, 0, 255)
+            legs_color = (0, 255, 0) if KNEES_MIN <= knees <= KNEES_MAX else (0, 0, 255)
 
-            all_green = 5 <= spine <= 25 and 82 <= arms <= 90 and 145 <= knees <= 165
+            all_green = (
+                SPINE_MIN <= spine <= SPINE_MAX and
+                ARMS_MIN <= arms <= ARMS_MAX and
+                KNEES_MIN <= knees <= KNEES_MAX
+            )
 
             event = detector.update(landmarks, all_green)
 
@@ -149,6 +158,16 @@ with PoseLandmarker.create_from_options(options) as landmarker:
                 filename = save_swing(all_frames, fps=fps)
                 print(f"Saved: {filename}")
                 print(f"Captured {len(all_landmarks)} landmark frames for metrics")
+
+                tempo = tempo_ratio(all_landmarks)
+                head_move = head_movement(all_landmarks)
+                hand_height = top_hand_height(all_landmarks)
+                spine_maint = spine_angle_maintenance(all_landmarks)
+
+                print(f"Tempo Ratio: {tempo:.2f} (target 3.0)")
+                print(f"Head Movement: {head_move:.3f} (target <0.05)")
+                print(f"Top Hand Height: {hand_height:.1f}% of torso length")
+                print(f"Spine Maintenance: {spine_maint:.1f}° deviation")
 
                 swing_in_progress = False
                 pre_swing_frames = []
