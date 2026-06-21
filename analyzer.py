@@ -4,11 +4,12 @@ from mediapipe.tasks.python import vision, BaseOptions
 from mediapipe.tasks.python.vision import PoseLandmarker, PoseLandmarkerOptions, RunningMode
 import urllib.request
 import os
+from datetime import datetime
 
 from detection import SwingDetector
 from posture import spine_angle, arm_hang_angle, knee_flex
 from buffer import FrameBuffer, LandmarkBuffer
-from recording import save_swing
+from recording import save_swing , save_key_frames
 from body_metrics import tempo_ratio, head_movement, top_hand_height, spine_angle_maintenance
 
 MODEL_PATH = "pose_landmarker.task"
@@ -155,9 +156,15 @@ with PoseLandmarker.create_from_options(options) as landmarker:
                 all_frames = pre_swing_frames + post_swing_frames
                 all_landmarks = pre_swing_landmarks + post_swing_landmarks
 
-                filename = save_swing(all_frames, fps=fps)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                filename = save_swing(all_frames, fps=fps, timestamp=timestamp)
                 print(f"Saved: {filename}")
                 print(f"Captured {len(all_landmarks)} landmark frames for metrics")
+
+                key_frame_indices = find_key_frames(all_landmarks)
+                key_frame_paths = save_key_frames(all_frames, key_frame_indices, timestamp=timestamp)
+                print(f"Key frames saved: {key_frame_paths}")
 
                 tempo = tempo_ratio(all_landmarks)
                 head_move = head_movement(all_landmarks)
