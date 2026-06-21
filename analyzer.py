@@ -9,8 +9,10 @@ from datetime import datetime
 from detection import SwingDetector
 from posture import spine_angle, arm_hang_angle, knee_flex
 from buffer import FrameBuffer, LandmarkBuffer
-from recording import save_swing , save_key_frames
-from body_metrics import tempo_ratio, head_movement, top_hand_height, spine_angle_maintenance
+from recording import save_swing, save_key_frames
+from body_metrics import tempo_ratio, head_movement, top_hand_height, spine_angle_maintenance, find_key_frames
+from database import init_db, save_swing_to_db
+
 
 MODEL_PATH = "pose_landmarker.task"
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
@@ -33,6 +35,8 @@ SPINE_MIN, SPINE_MAX = 5, 25
 ARMS_MIN, ARMS_MAX = 82, 90
 KNEES_MIN, KNEES_MAX = 135, 165
 
+CLUB = input("Which club are you using? (e.g. 7iron, driver, pw): ").strip()
+
 options = PoseLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=MODEL_PATH),
     running_mode=RunningMode.VIDEO
@@ -44,6 +48,8 @@ if not fps or fps <= 1:
     fps = 30
 print(f"Actual FPS: {fps}")
 print("Starting Camera — press Q to quit")
+
+init_db()
 
 detector = SwingDetector()
 buffer = FrameBuffer(max_frames=PRE_SWING_LENGTH)
@@ -175,6 +181,18 @@ with PoseLandmarker.create_from_options(options) as landmarker:
                 print(f"Head Movement: {head_move:.3f} (target <0.05)")
                 print(f"Top Hand Height: {hand_height:.1f}% of torso length")
                 print(f"Spine Maintenance: {spine_maint:.1f}° deviation")
+
+                save_swing_to_db(
+                    timestamp=timestamp,
+                    club=CLUB,
+                    video_path=filename,
+                    key_frame_paths=key_frame_paths,
+                    tempo=tempo,
+                    head_move=head_move,
+                    hand_height=hand_height,
+                    spine_maint=spine_maint
+                )
+                print("Saved to database")
 
                 swing_in_progress = False
                 pre_swing_frames = []
