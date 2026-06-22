@@ -16,7 +16,7 @@ from database import init_db, save_swing_to_db, get_last_n_swings
 
 
 MODEL_PATH = "pose_landmarker.task"
-MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task"
 
 if not os.path.exists(MODEL_PATH):
     print("Downloading pose model...")
@@ -240,7 +240,6 @@ with PoseLandmarker.create_from_options(options) as landmarker:
 
 cap.release()
 cv2.destroyAllWindows()
-
 
 
 
