@@ -5,3 +5,7 @@ swings/
 .env
 venv/
 pose_landmarker.task
+
+swings/
+swing_keys/
+.DS_Store 
