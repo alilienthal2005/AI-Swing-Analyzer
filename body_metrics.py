@@ -33,15 +33,19 @@ def tempo_ratio(landmarks_per_frame):
     
     return backswing_frames / downswing_frames
 
-def head_movement(landmarks_per_frame):
+def head_movement(landmarks_per_frame, post_impact_buffer=5):
+    key_frames = find_key_frames(landmarks_per_frame)
+    
     address_landmarks = landmarks_per_frame[0]
     address_x = address_landmarks[0].x
     address_y = address_landmarks[0].y
     
+    end_idx = min(key_frames["impact"] + post_impact_buffer, len(landmarks_per_frame) - 1)
+    
     max_distance = 0
     
-    for frame in landmarks_per_frame:
-        nose = frame[0]
+    for i in range(0, end_idx + 1):
+        nose = landmarks_per_frame[i][0]
         dx = nose.x - address_x
         dy = nose.y - address_y
         distance = math.sqrt(dx**2 + dy**2)
