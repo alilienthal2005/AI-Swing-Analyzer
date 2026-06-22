@@ -11,7 +11,8 @@ from posture import spine_angle, arm_hang_angle, knee_flex
 from buffer import FrameBuffer, LandmarkBuffer
 from recording import save_swing, save_key_frames
 from body_metrics import tempo_ratio, head_movement, top_hand_height, spine_angle_maintenance, find_key_frames
-from database import init_db, save_swing_to_db
+from coach import analyze_session
+from database import init_db, save_swing_to_db, get_last_n_swings
 
 
 MODEL_PATH = "pose_landmarker.task"
@@ -50,6 +51,7 @@ print(f"Actual FPS: {fps}")
 print("Starting Camera — press Q to quit")
 
 init_db()
+os.makedirs("reports", exist_ok=True)
 
 detector = SwingDetector()
 buffer = FrameBuffer(max_frames=PRE_SWING_LENGTH)
@@ -204,8 +206,37 @@ with PoseLandmarker.create_from_options(options) as landmarker:
 
         cv2.imshow("Swing AI", frame)
 
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        key = cv2.waitKey(1) & 0xFF
+
+        if key == ord('q'):
             break
+
+        elif key == ord('r'):
+            print("\nGenerating coaching report...")
+            swings = get_last_n_swings(10)
+
+            if not swings:
+                print("No swings in database yet. Do some swings first.")
+            else:
+                feedback = analyze_session(swings)
+
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                report_path = f"reports/report_{timestamp}.txt"
+
+                with open(report_path, 'w') as f:
+                    f.write(f"SESSION REPORT — {timestamp}\n")
+                    f.write(f"{len(swings)} swings analyzed | {swings[0].get('club', 'unknown')}\n")
+                    f.write("=" * 40 + "\n\n")
+                    f.write(feedback)
+
+                print("\n" + "=" * 40)
+                print("SWING AI — SESSION REPORT")
+                print(f"{len(swings)} swings | {swings[0].get('club', 'unknown')}")
+                print("=" * 40 + "\n")
+                print(feedback)
+                print("\n" + "=" * 40)
+                print(f"Report saved: {report_path}")
+                print("=" * 40 + "\n")
 
 cap.release()
 cv2.destroyAllWindows()
