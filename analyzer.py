@@ -1,8 +1,5 @@
 import cv2
 import mediapipe as mp
-from mediapipe.tasks.python import vision, BaseOptions
-from mediapipe.tasks.python.vision import PoseLandmarker, PoseLandmarkerOptions, RunningMode
-import urllib.request
 import os
 from datetime import datetime
 
@@ -13,15 +10,7 @@ from recording import save_swing, save_key_frames
 from body_metrics import tempo_ratio, head_movement, top_hand_height, spine_angle_maintenance, find_key_frames
 from coach import analyze_session
 from database import init_db, save_swing_to_db, get_last_n_swings
-
-
-MODEL_PATH = "pose_landmarker.task"
-MODEL_URL = "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task"
-
-if not os.path.exists(MODEL_PATH):
-    print("Downloading pose model...")
-    urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
-    print("Done.")
+from pose_models import create_lite_landmarker, create_heavy_landmarker, reanalyze_with_heavy_model
 
 
 SPINE_LINES = [(11, 12), (11, 23), (12, 24), (23, 24)]
@@ -38,10 +27,7 @@ KNEES_MIN, KNEES_MAX = 135, 165
 
 CLUB = input("Which club are you using? (e.g. 7iron, driver, pw): ").strip()
 
-options = PoseLandmarkerOptions(
-    base_options=BaseOptions(model_asset_path=MODEL_PATH),
-    running_mode=RunningMode.VIDEO
-)
+heavy_landmarker = create_heavy_landmarker()
 
 cap = cv2.VideoCapture(0)
 fps = cap.get(cv2.CAP_PROP_FPS)
@@ -59,11 +45,9 @@ landmark_buffer = LandmarkBuffer(max_frames=PRE_SWING_LENGTH)
 
 swing_in_progress = False
 pre_swing_frames = []
-pre_swing_landmarks = []
 post_swing_frames = []
-post_swing_landmarks = []
 
-with PoseLandmarker.create_from_options(options) as landmarker:
+with create_lite_landmarker() as landmarker:
     frame_num = 0
     while cap.isOpened():
         ret, frame = cap.read()
@@ -151,56 +135,56 @@ with PoseLandmarker.create_from_options(options) as landmarker:
         if event == "swing_started" and not swing_in_progress:
             swing_in_progress = True
             pre_swing_frames = buffer.get_all()
-            pre_swing_landmarks = landmark_buffer.get_all()
             post_swing_frames = []
-            post_swing_landmarks = []
 
         if swing_in_progress:
             post_swing_frames.append(frame.copy())
-            if landmarks is not None:
-                post_swing_landmarks.append(landmarks)
 
             if len(post_swing_frames) >= POST_SWING_LENGTH:
                 all_frames = pre_swing_frames + post_swing_frames
-                all_landmarks = pre_swing_landmarks + post_swing_landmarks
+                swing_start_idx = max(0, len(pre_swing_frames) - 1)
 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
                 filename = save_swing(all_frames, fps=fps, timestamp=timestamp)
                 print(f"Saved: {filename}")
-                print(f"Captured {len(all_landmarks)} landmark frames for metrics")
 
-                key_frame_indices = find_key_frames(all_landmarks)
-                key_frame_paths = save_key_frames(all_frames, key_frame_indices, timestamp=timestamp)
-                print(f"Key frames saved: {key_frame_paths}")
+                print("Re-analyzing with heavy model for accurate metrics...")
+                all_landmarks = reanalyze_with_heavy_model(all_frames, heavy_landmarker)
+                print(f"Heavy reanalysis produced {len(all_landmarks)} landmark frames (matches {len(all_frames)} video frames: {len(all_landmarks) == len(all_frames)})")
 
-                tempo = tempo_ratio(all_landmarks)
-                head_move = head_movement(all_landmarks)
-                hand_height = top_hand_height(all_landmarks)
-                spine_maint = spine_angle_maintenance(all_landmarks)
+                if None in all_landmarks:
+                    print("Pose detection failed on frames — skipping metrics")
+                else:
+                    key_frame_indices = find_key_frames(all_landmarks, swing_start_idx=swing_start_idx)
+                    key_frame_paths = save_key_frames(all_frames, key_frame_indices, timestamp=timestamp)
+                    print(f"Key frames saved: {key_frame_paths}")
 
-                print(f"Tempo Ratio: {tempo:.2f} (target 3.0)")
-                print(f"Head Movement: {head_move:.3f} (target <0.05)")
-                print(f"Top Hand Height: {hand_height:.1f}% of torso length")
-                print(f"Spine Maintenance: {spine_maint:.1f}° deviation")
+                    tempo = tempo_ratio(all_landmarks, swing_start_idx=swing_start_idx)
+                    head_move = head_movement(all_landmarks, swing_start_idx=swing_start_idx)
+                    hand_height = top_hand_height(all_landmarks, swing_start_idx=swing_start_idx)
+                    spine_maint = spine_angle_maintenance(all_landmarks, swing_start_idx=swing_start_idx)
 
-                save_swing_to_db(
-                    timestamp=timestamp,
-                    club=CLUB,
-                    video_path=filename,
-                    key_frame_paths=key_frame_paths,
-                    tempo=tempo,
-                    head_move=head_move,
-                    hand_height=hand_height,
-                    spine_maint=spine_maint
-                )
-                print("Saved to database")
+                    print(f"Tempo Ratio: {tempo:.2f} (target 3.0)")
+                    print(f"Head Movement: {head_move:.3f} (target <0.05)")
+                    print(f"Top Hand Height: {hand_height:.1f}% of torso length")
+                    print(f"Spine Maintenance: {spine_maint:.1f}° deviation")
+
+                    save_swing_to_db(
+                        timestamp=timestamp,
+                        club=CLUB,
+                        video_path=filename,
+                        key_frame_paths=key_frame_paths,
+                        tempo=tempo,
+                        head_move=head_move,
+                        hand_height=hand_height,
+                        spine_maint=spine_maint
+                    )
+                    print("Saved to database")
 
                 swing_in_progress = False
                 pre_swing_frames = []
-                pre_swing_landmarks = []
                 post_swing_frames = []
-                post_swing_landmarks = []
                 buffer.clear()
                 landmark_buffer.clear()
 
@@ -240,6 +224,7 @@ with PoseLandmarker.create_from_options(options) as landmarker:
 
 cap.release()
 cv2.destroyAllWindows()
+heavy_landmarker.close()
 
 
 

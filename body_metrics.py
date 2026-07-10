@@ -3,14 +3,10 @@ import math
 from posture import spine_angle
 
 
-def find_key_frames(landmarks_per_frame):
+def find_key_frames(landmarks_per_frame, swing_start_idx=0):
     n = len(landmarks_per_frame)
 
-    address_idx = 0
-    for i in range(n):
-        if landmarks_per_frame[i][15].y > landmarks_per_frame[i][23].y * 0.95:
-            address_idx = i
-            break
+    address_idx = swing_start_idx
 
     wrist_y_values = [frame[15].y for frame in landmarks_per_frame]
 
@@ -36,8 +32,8 @@ def find_key_frames(landmarks_per_frame):
         "finish": finish_idx
     }
 
-def tempo_ratio(landmarks_per_frame):
-    key_frames = find_key_frames(landmarks_per_frame)
+def tempo_ratio(landmarks_per_frame, swing_start_idx=0):
+    key_frames = find_key_frames(landmarks_per_frame, swing_start_idx)
 
     backswing_frames = key_frames["top"] - key_frames["address"]
     downswing_frames = key_frames["impact"] - key_frames["top"]
@@ -47,8 +43,8 @@ def tempo_ratio(landmarks_per_frame):
 
     return backswing_frames / downswing_frames
 
-def head_movement(landmarks_per_frame, post_impact_buffer=5):
-    key_frames = find_key_frames(landmarks_per_frame)
+def head_movement(landmarks_per_frame, swing_start_idx=0, post_impact_buffer=5):
+    key_frames = find_key_frames(landmarks_per_frame, swing_start_idx)
 
     address_landmarks = landmarks_per_frame[key_frames["address"]]
     address_x = address_landmarks[0].x
@@ -69,8 +65,8 @@ def head_movement(landmarks_per_frame, post_impact_buffer=5):
 
     return max_distance
 
-def top_hand_height(landmarks_per_frame):
-    key_frames = find_key_frames(landmarks_per_frame)
+def top_hand_height(landmarks_per_frame, swing_start_idx=0):
+    key_frames = find_key_frames(landmarks_per_frame, swing_start_idx)
     address = landmarks_per_frame[key_frames["address"]]
     top = landmarks_per_frame[key_frames["top"]]
 
@@ -87,8 +83,8 @@ def top_hand_height(landmarks_per_frame):
 
     return (raw_rise / torso_length) * 100
 
-def spine_angle_maintenance(landmarks_per_frame, post_impact_buffer=5):
-    key_frames = find_key_frames(landmarks_per_frame)
+def spine_angle_maintenance(landmarks_per_frame, swing_start_idx=0, post_impact_buffer=5):
+    key_frames = find_key_frames(landmarks_per_frame, swing_start_idx)
 
     address_landmarks = landmarks_per_frame[key_frames["address"]]
     address_angle = spine_angle(address_landmarks)
