@@ -21,7 +21,7 @@ import sys
 
 import cv2
 
-from body_metrics import find_key_frames, tempo_ratio, top_hand_height
+from body_metrics import find_key_frames_with_diagnostics, tempo_ratio, top_hand_height
 from plotting import save_keyframes_plot
 from pose_models import create_heavy_landmarker, reanalyze_with_heavy_model
 
@@ -62,7 +62,7 @@ def debug_swing(name, landmarker):
     n = len(landmarks)
     swing_start_idx = min(PRE_SWING_LENGTH - 1, n - 1)
 
-    key_frames = find_key_frames(landmarks, swing_start_idx=swing_start_idx)
+    key_frames, peaks, troughs = find_key_frames_with_diagnostics(landmarks, swing_start_idx=swing_start_idx)
 
     tempo = tempo_ratio(landmarks, swing_start_idx=swing_start_idx)
     hand_height = top_hand_height(landmarks, swing_start_idx=swing_start_idx)
@@ -70,13 +70,15 @@ def debug_swing(name, landmarker):
     print(f"\n=== {name} ===")
     print(f"frames: {n}, swing_start_idx (as passed by analyzer.py): {swing_start_idx}")
     print(f"key_frames: {key_frames}")
+    print(f"candidate peaks: {list(peaks)}  candidate troughs: {list(troughs)}")
     print(f"tempo_ratio: {tempo:.2f}  top_hand_height: {hand_height:.1f}%")
 
     # video filenames are "swing_{timestamp}.mp4" -- strip the prefix back
     # off so save_keyframes_plot can re-add it consistently with the other
     # swing_keys/ and swings/ artifacts for this same timestamp.
     timestamp = name[len("swing_"):] if name.startswith("swing_") else name
-    out_path = save_keyframes_plot(landmarks, key_frames, timestamp, swing_start_idx=swing_start_idx)
+    out_path = save_keyframes_plot(landmarks, key_frames, timestamp, swing_start_idx=swing_start_idx,
+                                    peaks=peaks, troughs=troughs)
     print(f"plot saved: {out_path}")
 
 

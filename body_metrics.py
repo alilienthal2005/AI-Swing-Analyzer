@@ -1,23 +1,55 @@
 import math
 
+import numpy as np
+from scipy.signal import find_peaks, savgol_filter
+
 from posture import spine_angle
 
 
 ADDRESS_LOOKBACK_FRAMES = 15
-MAX_BACKSWING_FRAMES = 60
-TOP_REVERSAL_THRESHOLD = 0.03
-TOP_REVERSAL_FRAMES = 6
-MIN_VISIBILITY_FOR_TOP = 0.3
-MIN_FRAMES_TOP_TO_IMPACT = 3
-IMPACT_DEBOUNCE_FRAMES = 2
+MIN_WRIST_VISIBILITY = 0.3
+
+# SwingDetector (detection.py) holds SWINGING for swing_duration_frames (60)
+# before moving to COOLDOWN -- used here as a hard ceiling on how far past
+# address we'll look for top/impact/finish, so a candidate can never be
+# picked from the post-swing walk-off/cooldown footage.
+SWING_DURATION_FRAMES = 60
+
+SAVGOL_WINDOW = 9
+SAVGOL_POLYORDER = 2
+
+# Tuned against 5 real recorded swings (see debug_keyframes.py): the
+# genuine top/impact/finish peaks all have prominence >= 0.19 once smoothed,
+# while jitter-driven spurious peaks top out around 0.08. 0.12 sits cleanly
+# between the two with margin on both sides. distance=8 (~0.27s at 30fps)
+# stops a single physical peak from being split into two by noise.
+PEAK_PROMINENCE = 0.12
+PEAK_MIN_DISTANCE = 8
 
 
 def find_key_frames(landmarks_per_frame, swing_start_idx=0):
+    key_frames, _peaks, _troughs = _find_key_frames_with_diagnostics(landmarks_per_frame, swing_start_idx)
+    return key_frames
+
+
+def find_key_frames_with_diagnostics(landmarks_per_frame, swing_start_idx=0):
+    """Same as find_key_frames, but also returns the raw peak/trough indices
+    find_peaks detected (before the first-peak/first-trough/next-peak
+    selection), for debug plotting -- see debug_keyframes.py."""
+    return _find_key_frames_with_diagnostics(landmarks_per_frame, swing_start_idx)
+
+
+def _find_key_frames_with_diagnostics(landmarks_per_frame, swing_start_idx=0):
     n = len(landmarks_per_frame)
 
     wrist_y = [frame[15].y for frame in landmarks_per_frame]
     wrist_visibility = [frame[15].visibility for frame in landmarks_per_frame]
-    hip_y = [(frame[23].y + frame[24].y) / 2 for frame in landmarks_per_frame]
+    # Fall back to the right wrist on frames where the left wrist is barely
+    # tracked (occlusion/motion blur) -- reduces single-frame spikes feeding
+    # into the peak search below.
+    for i in range(n):
+        if wrist_visibility[i] < MIN_WRIST_VISIBILITY:
+            wrist_y[i] = landmarks_per_frame[i][16].y
 
     # swing_start_idx is the first frame the SwingDetector state machine
     # classifies as "swinging" -- it only fires once the wrist has already
@@ -27,55 +59,62 @@ def find_key_frames(landmarks_per_frame, swing_start_idx=0):
     lookback_start = max(0, swing_start_idx - ADDRESS_LOOKBACK_FRAMES)
     address_idx = max(range(lookback_start, swing_start_idx + 1), key=lambda i: wrist_y[i])
 
-    # Top of backswing: track the running minimum wrist-y, but stop as soon
-    # as the wrist clearly reverses direction and holds that reversal for
-    # several frames. A plain global-minimum search (no bound, no reversal
-    # check) can get dragged into the follow-through/rotation phase, where a
-    # foreshortened or partially-occluded wrist can read as an even lower y
-    # than the real top -- hijacking "top" away from the actual backswing peak.
-    top_window_end = min(address_idx + MAX_BACKSWING_FRAMES, n)
-    top_idx = address_idx
-    min_y = wrist_y[address_idx]
-    reversal_run = 0
-    for i in range(address_idx + 1, top_window_end):
-        if wrist_visibility[i] < MIN_VISIBILITY_FOR_TOP:
-            continue
-        if wrist_y[i] < min_y:
-            min_y = wrist_y[i]
-            top_idx = i
-            reversal_run = 0
-        elif wrist_y[i] > min_y + TOP_REVERSAL_THRESHOLD:
-            reversal_run += 1
-            if reversal_run >= TOP_REVERSAL_FRAMES:
-                break
-        else:
-            reversal_run = 0
+    # Bound relative to swing_start_idx (when SwingDetector actually enters
+    # SWINGING), not address_idx -- address_idx can rewind a few frames
+    # earlier, and shortening the window by that same amount was enough to
+    # truncate a real, wide follow-through peak before it fully registered.
+    window_end = min(swing_start_idx + SWING_DURATION_FRAMES, n)
+    segment = np.array(wrist_y[address_idx:window_end])
 
-    # Impact: first frame (sustained for a couple of frames, to ignore
-    # single-frame landmark noise) where the wrist drops back to/past hip
-    # height, searched only within a plausible downswing window past a short
-    # guard after top. The original heuristic scanned unbounded all the way
-    # to the end of the clip using a single hip landmark with no guard, so it
-    # could fire on unrelated post-swing motion (walking off, cooldown) --
-    # producing wild backswing:downswing ratios (0, 5x, 67x).
-    backswing_frames = max(top_idx - address_idx, 1)
-    downswing_window_end = min(top_idx + max(2 * backswing_frames, 20), n - 1)
+    window_length = min(SAVGOL_WINDOW, len(segment))
+    if window_length % 2 == 0:
+        window_length -= 1
+    if window_length >= 3:
+        smoothed = savgol_filter(segment, window_length=window_length, polyorder=min(SAVGOL_POLYORDER, window_length - 1))
+    else:
+        smoothed = segment
 
-    impact_idx = downswing_window_end
-    search_start = top_idx + MIN_FRAMES_TOP_TO_IMPACT
-    for i in range(search_start, downswing_window_end - IMPACT_DEBOUNCE_FRAMES + 1):
-        if all(wrist_y[i + k] >= hip_y[i + k] for k in range(IMPACT_DEBOUNCE_FRAMES)):
-            impact_idx = i
-            break
+    # Every real swing shows a double-hump wrist-y curve: a first peak (true
+    # top of backswing, hands raised), a dip through the downswing/impact,
+    # then a second peak (follow-through, often taller/wider than the
+    # first). A plain global-minimum search picks the tallest point in the
+    # whole clip, which is usually the second hump -- hijacking "top" into
+    # the follow-through. Detecting actual peaks/troughs and taking them in
+    # sequence (first peak, first trough after it, next peak after that)
+    # tracks the real swing phases instead.
+    peaks, _ = find_peaks(-smoothed, prominence=PEAK_PROMINENCE, distance=PEAK_MIN_DISTANCE)
+    troughs, _ = find_peaks(smoothed, prominence=PEAK_PROMINENCE, distance=PEAK_MIN_DISTANCE)
+    peaks = peaks + address_idx
+    troughs = troughs + address_idx
 
-    finish_idx = min(impact_idx + 30, n - 1)
+    if len(peaks) >= 1:
+        top_idx = int(peaks[0])
+    else:
+        print(f"[find_key_frames] fallback: no peak found for top in window {address_idx}-{window_end}, using global min")
+        top_idx = address_idx + int(np.argmin(smoothed))
 
-    return {
+    troughs_after_top = troughs[troughs > top_idx]
+    if len(troughs_after_top) >= 1:
+        impact_idx = int(troughs_after_top[0])
+    else:
+        print(f"[find_key_frames] fallback: no trough found for impact after top={top_idx}, using local max")
+        tail = smoothed[top_idx - address_idx:]
+        impact_idx = top_idx + int(np.argmax(tail)) if len(tail) else top_idx
+
+    peaks_after_impact = peaks[peaks > impact_idx]
+    if len(peaks_after_impact) >= 1:
+        finish_idx = int(peaks_after_impact[0])
+    else:
+        print(f"[find_key_frames] fallback: no peak found for finish after impact={impact_idx}, using impact+30")
+        finish_idx = min(impact_idx + 30, n - 1)
+
+    key_frames = {
         "address": address_idx,
         "top": top_idx,
         "impact": impact_idx,
         "finish": finish_idx
     }
+    return key_frames, peaks, troughs
 
 def tempo_ratio(landmarks_per_frame, swing_start_idx=0):
     key_frames = find_key_frames(landmarks_per_frame, swing_start_idx)
