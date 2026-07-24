@@ -12,18 +12,17 @@ resulting metrics.
 
 If no swing_name is given, runs against every swing in swings/.
 Landmark extraction is cached under swing_keys/ since the heavy model takes
-a few seconds per swing.
+a few seconds per swing. Plots are saved to swing_graphs/, same place
+analyzer.py writes them automatically for each newly recorded swing.
 """
 import os
 import pickle
 import sys
 
 import cv2
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 from body_metrics import find_key_frames, tempo_ratio, top_hand_height
+from plotting import save_keyframes_plot
 from pose_models import create_heavy_landmarker, reanalyze_with_heavy_model
 
 SWINGS_DIR = "swings"
@@ -64,7 +63,6 @@ def debug_swing(name, landmarker):
     swing_start_idx = min(PRE_SWING_LENGTH - 1, n - 1)
 
     key_frames = find_key_frames(landmarks, swing_start_idx=swing_start_idx)
-    wrist_y = [frame[15].y for frame in landmarks]
 
     tempo = tempo_ratio(landmarks, swing_start_idx=swing_start_idx)
     hand_height = top_hand_height(landmarks, swing_start_idx=swing_start_idx)
@@ -74,30 +72,11 @@ def debug_swing(name, landmarker):
     print(f"key_frames: {key_frames}")
     print(f"tempo_ratio: {tempo:.2f}  top_hand_height: {hand_height:.1f}%")
 
-    fig, ax = plt.subplots(figsize=(11, 4))
-    ax.plot(wrist_y, color="steelblue", linewidth=1, label="wrist-y (left wrist, landmark 15)")
-    ax.axvline(swing_start_idx, color="gray", linestyle=":", label="swing_start_idx (raw)")
-
-    markers = [
-        ("address", key_frames["address"], "green"),
-        ("top", key_frames["top"], "orange"),
-        ("impact", key_frames["impact"], "red"),
-        ("finish", key_frames["finish"], "purple"),
-    ]
-    for label, idx, color in markers:
-        ax.axvline(idx, color=color, linestyle="--", linewidth=1.5)
-        ax.annotate(label, (idx, wrist_y[idx]), textcoords="offset points",
-                    xytext=(4, 8), color=color, fontweight="bold")
-
-    ax.invert_yaxis()  # lower y = higher hand position
-    ax.set_xlabel("frame index")
-    ax.set_ylabel("wrist y (normalized, inverted)")
-    ax.set_title(f"find_key_frames debug: {name}")
-    ax.legend(loc="upper right", fontsize=8)
-
-    out_path = os.path.join(CACHE_DIR, f"{name}_keyframes_debug.png")
-    fig.savefig(out_path, dpi=120, bbox_inches="tight")
-    plt.close(fig)
+    # video filenames are "swing_{timestamp}.mp4" -- strip the prefix back
+    # off so save_keyframes_plot can re-add it consistently with the other
+    # swing_keys/ and swings/ artifacts for this same timestamp.
+    timestamp = name[len("swing_"):] if name.startswith("swing_") else name
+    out_path = save_keyframes_plot(landmarks, key_frames, timestamp, swing_start_idx=swing_start_idx)
     print(f"plot saved: {out_path}")
 
 

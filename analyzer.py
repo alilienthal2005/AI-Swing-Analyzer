@@ -11,6 +11,7 @@ from body_metrics import tempo_ratio, head_movement, top_hand_height, spine_angl
 from coach import analyze_session
 from database import init_db, save_swing_to_db, get_last_n_swings
 from pose_models import create_lite_landmarker, create_heavy_landmarker, reanalyze_with_heavy_model
+from plotting import save_keyframes_plot
 
 
 SPINE_LINES = [(11, 12), (11, 23), (12, 24), (23, 24)]
@@ -43,6 +44,7 @@ print("Starting Camera — press Q to quit")
 
 init_db()
 os.makedirs("reports", exist_ok=True)
+os.makedirs("swing_graphs", exist_ok=True)
 
 detector = SwingDetector()
 buffer = FrameBuffer(max_frames=PRE_SWING_LENGTH)
@@ -164,6 +166,9 @@ with create_lite_landmarker() as landmarker:
                     key_frame_indices = find_key_frames(all_landmarks, swing_start_idx=swing_start_idx)
                     key_frame_paths = save_key_frames(all_frames, key_frame_indices, timestamp=timestamp)
                     print(f"Key frames saved: {key_frame_paths}")
+
+                    graph_path = save_keyframes_plot(all_landmarks, key_frame_indices, timestamp, swing_start_idx=swing_start_idx)
+                    print(f"Key frame graph saved: {graph_path}")
 
                     tempo = tempo_ratio(all_landmarks, swing_start_idx=swing_start_idx)
                     head_move = head_movement(all_landmarks, swing_start_idx=swing_start_idx)
