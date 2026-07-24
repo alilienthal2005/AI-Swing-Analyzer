@@ -23,7 +23,12 @@ POST_SWING_LENGTH = 90
 
 SPINE_MIN, SPINE_MAX = 5, 25
 ARMS_MIN, ARMS_MAX = 82, 90
-KNEES_MIN, KNEES_MAX = 135, 165
+# Instructional guidance for setup posture calls for a slight knee flex --
+# commonly taught as "sit into your stance" -- of roughly 10-25 degrees from
+# straight, not the 15-45 degrees the old 135-165 range required (too bent
+# to hold naturally). 155-172 corresponds to that ~10-25 degree flex window
+# (180 = fully straight leg).
+KNEES_MIN, KNEES_MAX = 155, 172
 
 CLUB = input("Which club are you using? (e.g. 7iron, driver, pw): ").strip()
 
@@ -167,7 +172,7 @@ with create_lite_landmarker() as landmarker:
 
                     print(f"Tempo Ratio: {tempo:.2f} (target 3.0)")
                     print(f"Head Movement: {head_move:.3f} (target <0.05)")
-                    print(f"Top Hand Height: {hand_height:.1f}% of torso length")
+                    print(f"Top Hand Height: {hand_height:.1f}% of body height")
                     print(f"Spine Maintenance: {spine_maint:.1f}° deviation")
 
                     save_swing_to_db(

@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(\".venv/bin/python\" -)",
+      "Bash(\".venv/bin/python\" \"/private/tmp/claude-501/-Users-alexlilienthal-Desktop-CS-projects-AI-Swing-Analyzer/9f0b0c44-aa95-4552-8ee7-e432d51c9250/scratchpad/try_fix.py\")",
+      "Bash(\".venv/bin/python\" \"/private/tmp/claude-501/-Users-alexlilienthal-Desktop-CS-projects-AI-Swing-Analyzer/9f0b0c44-aa95-4552-8ee7-e432d51c9250/scratchpad/try_fix3.py\")"
+    ]
+  }
+}

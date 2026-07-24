@@ -41,7 +41,7 @@ SESSION DATA:
 - Average tempo ratio: {summary['avg_tempo']}:1 (tour target: 3.0:1)
 - Tempo consistency (range): {summary['tempo_consistency']} (lower is better, <0.5 is excellent)
 - Average head movement: {summary['avg_head_movement']} (target: <0.03, <0.05 is acceptable)
-- Average top hand height: {summary['avg_top_hand_height']}% of torso length
+- Average top hand height: {summary['avg_top_hand_height']}% of body height
 - Average spine maintenance deviation: {summary['avg_spine_maintenance']}° (target: <5°)
 
 Respond in EXACTLY this format, no extra text:
